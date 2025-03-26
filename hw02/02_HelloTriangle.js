@@ -20,7 +20,7 @@ canvas.height = textcanvas.height = 600;
 // Resize viewport while keeping the aspect ratio
 import { resizeAspectRatio } from './util.js';
 window.addEventListener('resize', () => {
-    resizeAspectRatio(gl, canvas);
+    resizeAspectRatio(canvas, gl);
     render();
 });
 
