@@ -139,8 +139,8 @@ function getCircleLineIntersections(x1, y1, x2, y2, cx, cy, r) {
     if (D < 0) return [];
 
     const sqrtD = Math.sqrt(D);
-    const t1 = (-B + sqrtD) / (2*A);
-    const t2 = (-B - sqrtD) / (2*A);
+    const t1 = (-B - sqrtD) / (2*A);
+    const t2 = (-B + sqrtD) / (2*A);
 
     const points = [];
     if (t1 >= 0 && t1 <= 1) points.push([a*t1 + b, c*t1 + d]);
