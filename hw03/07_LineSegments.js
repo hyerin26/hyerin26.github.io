@@ -260,7 +260,7 @@ function render() {
 
     // 선 그리기
     if (lines.length === 2) {
-        shader.setVec4("u_color", [0.5, 0.5, 1.0, 1.0]);
+        shader.setVec4("u_color", [0.7, 0.7, 1.0, 1.0]);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(lines[1]), gl.STATIC_DRAW);
         gl.bindVertexArray(vao);
         gl.drawArrays(gl.LINES, 0, 2);
