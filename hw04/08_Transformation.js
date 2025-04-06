@@ -1,5 +1,5 @@
-import { resizeAspectRatio, Axes } from '../util.js';
-import { Shader, readShaderFile } from '../shader.js';
+import { resizeAspectRatio, Axes } from './util.js';
+import { Shader, readShaderFile } from './shader.js';
 
 let isInitialized = false;
 const canvas = document.getElementById('glCanvas');
