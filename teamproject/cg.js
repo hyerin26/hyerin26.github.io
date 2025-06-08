@@ -75,6 +75,8 @@ const animalStates = animalPaths.map(() => ({
   speed: 0.02 + Math.random() * 0.01
 }));
 
+const flyingAnimals = [];  // [{ obj, startTime, originalY }]
+
 function setNewTarget(index) {
   const animal = animals[index];
   const state = animalStates[index];
@@ -248,7 +250,7 @@ loader.load('./models/fence.glb', (gltf) => {
   for (let i = 0; i < NUM_VERTICAL; i++) {
     const clone = baseFence.clone(true);
     const x = HALF;
-    const z = -HALF + i * FENCE_SPACING + 5;
+    const z = -HALF + i * FENCE_SPACING + 5;ㅁ
 
     clone.position.set(x, 0, z);
     clone.rotation.y = 0;
@@ -267,6 +269,18 @@ message.style.color = 'white';
 message.style.fontSize = '24px';
 message.style.textShadow = '1px 1px 2px black';
 document.body.appendChild(message);
+
+// 고정 메시지
+const tip = document.createElement('div');
+tip.style.position = 'absolute';
+tip.style.top = '10px';
+tip.style.left = '50%';
+tip.style.transform = 'translateX(-50%)';
+tip.style.color = 'white';
+tip.style.fontSize = '20px';
+tip.style.textShadow = '1px 1px 2px black';
+tip.innerText = '동물들에게 가서 E 키로 아이템을 얻으세요!';
+document.body.appendChild(tip);
 
 // === 키 입력 처리 ===
 const keys = {};
@@ -319,11 +333,40 @@ function animate() {
   requestAnimationFrame(animate);
 
   const speed = 0.1;
+  
+  // === 날아오르는 동물 처리 ===
+  const now = Date.now();
+  for (let i = flyingAnimals.length - 1; i >= 0; i--) {
+    const flying = flyingAnimals[i];
+    const t = (now - flying.startTime) / 1000; // 초 단위
+
+    if (t >= 5) {
+      // 애니메이션 종료 → 원래 위치로 복귀
+      flying.obj.position.y = flying.originalY;
+      flying.obj.rotation.set(0, 0, 0);
+      flyingAnimals.splice(i, 1); // 리스트에서 제거
+    } else {
+      // 5초 동안 위로 이동하며 회전
+      flying.obj.position.y = flying.originalY + Math.sin(t * Math.PI) * 3;  // 위아래 곡선
+      flying.obj.rotation.y += 0.2;
+      flying.obj.rotation.x = Math.sin(t * 10) * 0.1; // 살짝 흔들림 느낌
+    }
+  }
+
+
   if (player) {
     if (keys['w']) player.position.z -= speed;
     if (keys['s']) player.position.z += speed;
     if (keys['a']) player.position.x -= speed;
     if (keys['d']) player.position.x += speed;
+
+    // 이동 방향으로 회전
+    const dx = (keys['d'] ? 1 : 0) - (keys['a'] ? 1 : 0);
+    const dz = (keys['s'] ? 1 : 0) - (keys['w'] ? 1 : 0);
+    if (dx !== 0 || dz !== 0) {
+      const angle = Math.atan2(dx, dz);
+      player.rotation.y = angle;
+    }
 
     // 카메라가 주인공을 따라감
     const offset = new THREE.Vector3(0, 8, 15); // 뒤에서 위쪽에서 따라가는 거리
@@ -335,24 +378,46 @@ function animate() {
   let nearAnimal = false;
   for (let i = 0; i < animals.length; i++) {
     const animal = animals[i];
-    const dist = player.position.distanceTo(animal.position);
-    if (dist < 2) {
+    const dx = player.position.x - animal.position.x;
+    const dz = player.position.z - animal.position.z;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist < 4) {
       nearAnimal = true;
       message.innerText = 'E 키를 눌러 상호작용';
       if (keys['e'] && !inventory.includes(i)) {
         inventory.push(i);
         collected++;
         message.innerText = '아이템을 획득했습니다!';
-        if (collected === 3) startParty();
+
+        // 동물 날기 애니메이션 시작
+        flyingAnimals.push({
+          obj: animal,
+          startTime: Date.now(),
+          originalY: animal.position.y
+        });
+
+        if (collected === 3) {
+          tip.style.display = 'none';
+          message.innerText = '아이템을 모두 모았습니다! 파티가 곧 시작됩니다 🎉';
+          setTimeout(() => {
+            startParty();
+          }, 5000); // 5000ms = 5초 후 파티 시작
+        }
       }
       break;
     }
   }
   if (!nearAnimal) {
-    message.innerText = '';
+    // 파티 시작 전이고, 메시지가 특정 안내일 때는 유지
+    if (!partyStarted && message.innerText.includes('파티가 곧 시작')) {
+      // 그대로 둔다
+    } else {
+      message.innerText = '';
+    }
   }
 
   if (partyStarted) {
+    tip.style.display = 'none';
     animals.forEach((animal, idx) => {
       animal.rotation.y += 0.01;
       animal.position.y = Math.sin(Date.now() / 300 + idx) * 0.3;
