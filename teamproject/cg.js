@@ -250,7 +250,7 @@ loader.load('./models/fence.glb', (gltf) => {
   for (let i = 0; i < NUM_VERTICAL; i++) {
     const clone = baseFence.clone(true);
     const x = HALF;
-    const z = -HALF + i * FENCE_SPACING + 5;ㅁ
+    const z = -HALF + i * FENCE_SPACING + 5;
 
     clone.position.set(x, 0, z);
     clone.rotation.y = 0;
