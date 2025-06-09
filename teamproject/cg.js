@@ -52,6 +52,25 @@ light.shadow.camera.bottom = -50;
 light.shadow.camera.near = 1;
 light.shadow.camera.far = 100;
 
+// === 인벤토리 UI 생성 ===
+const inventoryBox = document.createElement('div');
+inventoryBox.style.position = 'absolute';
+inventoryBox.style.top = '10px';
+inventoryBox.style.left = '10px';
+inventoryBox.style.width = '250px';
+inventoryBox.style.height = '80px';
+inventoryBox.style.border = '3px solid white';
+inventoryBox.style.padding = '10px';
+inventoryBox.style.display = 'flex';
+inventoryBox.style.gap = '5px';
+inventoryBox.style.backgroundColor = 'rgba(0,0,0,0.5)';
+document.body.appendChild(inventoryBox);
+
+const animalItems = {
+  0: { name: '🧵 실을 얻었습니다! 🧵', emoji: '🧵' }, // 양
+  1: { name: '🥚 달걀을 얻었습니다! 🥚', emoji: '🥚' }, // 닭
+  2: { name: '🥩 고기를 얻었습니다! 🥩', emoji: '🥩' }  // 소
+};
 
 // === 카메라 위치 및 컨트롤 ===
 camera.position.set(0, 10, 20);
@@ -294,6 +313,17 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
+let tipTimeout = null;
+
+function showTip(text, duration = 3000) {
+  tip.innerText = text;
+  if (tipTimeout) clearTimeout(tipTimeout);
+  tipTimeout = setTimeout(() => {
+    tip.innerText = '동물들에게 가서 E 키로 아이템을 얻으세요!';
+  }, duration);
+}
+
+
 // === 동물 모델 로딩 ===
 for (let i = 0; i < animalPaths.length; i++) {
   loader.load(animalPaths[i], (gltf) => {
@@ -304,6 +334,9 @@ for (let i = 0; i < animalPaths.length; i++) {
     const wrapper = new THREE.Group();
     wrapper.add(model);
     wrapper.position.set(...animalPositions[i]);
+
+    // 동물 타입 저장
+    wrapper.userData.type = i;
 
     model.traverse((child) => {
       if (child.isMesh) child.castShadow = true;
@@ -384,40 +417,52 @@ function animate() {
     if (dist < 4) {
       nearAnimal = true;
       message.innerText = 'E 키를 눌러 상호작용';
-      if (keys['e'] && !inventory.includes(i)) {
-        inventory.push(i);
-        collected++;
-        message.innerText = '아이템을 획득했습니다!';
+      const type = animal.userData.type;
 
+      if (keys['e'] && !inventory.includes(type)) {
+        inventory.push(type);
+        collected++;
+
+        const item = animalItems[type];
+        showTip(item.name);  // 5초간 아이템 획득 메시지 출력
+      
+        // 이모티콘 추가
+        const itemSpan = document.createElement('span');
+        itemSpan.textContent = item.emoji;
+        itemSpan.style.fontSize = '60px';  // 크기 조절
+        inventoryBox.appendChild(itemSpan);
+      
         // 동물 날기 애니메이션 시작
         flyingAnimals.push({
           obj: animal,
           startTime: Date.now(),
           originalY: animal.position.y
         });
-
         if (collected === 3) {
-          tip.style.display = 'none';
-          message.innerText = '아이템을 모두 모았습니다! 파티가 곧 시작됩니다 🎉';
           setTimeout(() => {
-            startParty();
-          }, 5000); // 5000ms = 5초 후 파티 시작
+            showTip('아이템을 모두 모았습니다! 파티가 곧 시작됩니다 🎉', 5000);
+            message.innerText = '';
+            setTimeout(() => {
+              startParty();
+            }, 5000);
+          }, 3000);  // 0.5초 후에 파티 메시지 표시
         }
       }
       break;
     }
   }
-  if (!nearAnimal) {
-    // 파티 시작 전이고, 메시지가 특정 안내일 때는 유지
-    if (!partyStarted && message.innerText.includes('파티가 곧 시작')) {
-      // 그대로 둔다
-    } else {
-      message.innerText = '';
-    }
+  if (!nearAnimal || partyStarted) {
+    message.innerText = '';
   }
 
   if (partyStarted) {
-    tip.style.display = 'none';
+    setTimeout(() => {
+      showTip('파티가 시작되었습니다 🎉', 5000);
+      message.innerText = '';
+      setTimeout(() => {
+        startParty();
+      }, 5000);
+    }, 0);
     animals.forEach((animal, idx) => {
       animal.rotation.y += 0.01;
       animal.position.y = Math.sin(Date.now() / 300 + idx) * 0.3;
