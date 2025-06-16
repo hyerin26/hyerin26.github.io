@@ -35,7 +35,7 @@ scene.add(ground);
 
 // === 조명 ===
 const light = new THREE.DirectionalLight(0xffffff, 1);
-light.position.set(10, 20, 10);
+light.position.set(0, 20, 10);
 light.castShadow = true;
 light.intensity = 1;
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); // 밝은 회색, 중간 밝기
@@ -83,9 +83,19 @@ let player;
 let partyStarted = false;
 const animals = [];
 const animalPaths = ['./models/sheep.glb', './models/chicken.glb', './models/cow.glb'];
-const animalPositions = [[-12, 2.7, -10], [0, 2.7, -15], [23, 2.7, -6]];
+const animalPositions = [[-12, 0, -10], [0, 0, -15], [23, 0, -6]];
 const inventory = [];
 let collected = 0;
+
+const animalScales = [
+  3,    // sheep: 양 → 더 큼
+  2,  // chicken: 닭 → 더 작음
+  4     // cow: 소 → 제일 큼
+];
+
+const partyTargets = [];       // 동물별 파티 위치
+const dancingStates = [];      // 동물별 도착 여부
+
 
 // === 동물 상태 (배회용) ===
 const animalStates = animalPaths.map(() => ({
@@ -99,24 +109,78 @@ const flyingAnimals = [];  // [{ obj, startTime, originalY }]
 function setNewTarget(index) {
   const animal = animals[index];
   const state = animalStates[index];
-
   if (!animal) return;
 
   const center = animal.position;
+  const safeDistance = 3.0;
+  let attempts = 0;
 
-  // 주변 반경 10 내외
-  state.target.set(
-    center.x + (Math.random() - 0.5) * 20,
-    2.7,
-    center.z + (Math.random() - 0.5) * 20
+  do {
+    state.target.set(
+      center.x + (Math.random() - 0.5) * 20,
+      center.y,
+      center.z + (Math.random() - 0.5) * 20
+    );
+
+    // 전체 맵 벗어나지 않도록 제한
+    state.target.x = Math.max(Math.min(state.target.x, 50), -50);
+    state.target.z = Math.max(Math.min(state.target.z, 50), -50);
+
+    attempts++;
+  } while (
+    player && state.target.distanceTo(player.position) < safeDistance &&
+    attempts < 10
   );
-
-  // 전체 맵 벗어나지 않도록 제한
-  state.target.x = Math.max(Math.min(state.target.x, 50), -50);
-  state.target.z = Math.max(Math.min(state.target.z, 50), -50);
 
   state.waitTime = 0;
 }
+
+// === 바위와 나무 위치 지정 배치 ===
+const objectInfo = [
+  { path: 'models/rock1.glb', scale: 1.5, positions: [
+    [-30, 0, 10], [-15, 0, 23], [0, 0, 24], [15, 0, 23], [30, 0, 22], // 윗쪽
+    [-30, 0, 30], [-30, 0, 10], [-32, 0, -10], [-40, 0, -30],         // 왼쪽
+    [42, 0, 30], [43, 0, 10], [41, 0, -10], [42, 0, -30]              // 오른쪽
+  ]},
+  { path: 'models/rock2.glb', scale: 1.5, positions: [
+    [-25, 0, 41], [-10, 0, 42], [5, 0, 43], [20, 0, 41], // 윗쪽 중간
+    [-43, 0, 0], [43, 0, 0]                            // 좌우 중앙
+  ]},
+  { path: 'models/tree1.glb', scale: 2, positions: [
+    [-35, 0, -34], [-20, 0, -38], [6, 0, -35], [20, 0, -45], [25, 0, -20], // 윗쪽
+    [-44, 0, 15], [-44, 0, -25],  // 왼쪽
+    [44, 0, 25], [44, 0, -25]     // 오른쪽
+  ]},
+  { path: 'models/tree2.glb', scale: 2, positions: [
+    [-15, 0, -30], [0, 0, -30], [20, 0, -25], // 윗쪽 중심
+    [-40, 0, 0], [-44, 0, -15],          // 왼쪽
+    [44, 0, 15], [44, 0, -15]             // 오른쪽
+  ]}
+];
+
+// === 로딩 및 배치 ===
+objectInfo.forEach(({ path, scale, positions }) => {
+  loader.load(path, (gltf) => {
+    const base = gltf.scene;
+
+    base.traverse((child) => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
+
+    positions.forEach(([x, y, z]) => {
+      const clone = base.clone(true);
+      clone.position.set(x, y, z);
+      clone.scale.set(scale, scale, scale);
+      clone.rotation.y = Math.random() * Math.PI * 2;
+      scene.add(clone);
+    });
+  });
+});
+
+
 
 // 잔디 심기
 const NUM_GRASS = 300;  // 원하는 잔디 수
@@ -149,6 +213,7 @@ loader.load('./models/grass.glb', (gltf) => {
     grassModels.push(clone);
   }
 });
+
 
 // 꽃 심기
 const NUM_FLOWERS = 100;
@@ -278,6 +343,43 @@ loader.load('./models/fence.glb', (gltf) => {
   }
 });
 
+// 집 배치
+loader.load('models/house.glb', (gltf) => {
+  const house = gltf.scene;
+
+  // 크기와 위치 조정
+  house.scale.set(15, 15, 15);
+  house.position.set(-35, 0, -30);
+
+  // 그림자 적용
+  house.traverse((child) => {
+    if (child.isMesh) {
+      child.castShadow = true;   
+      child.material.metalness = 0.1;
+      child.material.roughness = 0.8;
+      // 색상 보정 및 밝기 향상
+      child.material.emissive.set('#4B2E1B');        // 살짝 발광
+      child.material.emissiveIntensity = 0.5;
+    }
+  });
+
+  scene.add(house);
+});
+
+// 거리 기반 충돌 감지 후 이동 제한
+function checkCollisionWithAnimals(nextPos) {
+  const minDist = 2.5; // 충돌 최소 거리
+
+  for (let animal of animals) {
+    const dist = animal.position.distanceTo(nextPos);
+    if (dist < minDist) {
+      return true; // 충돌 발생
+    }
+  }
+  return false;
+}
+
+
 // === UI 메시지 ===
 const message = document.createElement('div');
 message.style.position = 'absolute';
@@ -298,7 +400,7 @@ tip.style.transform = 'translateX(-50%)';
 tip.style.color = 'white';
 tip.style.fontSize = '20px';
 tip.style.textShadow = '1px 1px 2px black';
-tip.innerText = '동물들에게 가서 E 키로 아이템을 얻으세요!';
+tip.innerText = '동물들에게 가서 E 키로 아이템을 얻으세요! (방향키: WASD)';
 document.body.appendChild(tip);
 
 // === 키 입력 처리 ===
@@ -328,7 +430,13 @@ function showTip(text, duration = 3000) {
 for (let i = 0; i < animalPaths.length; i++) {
   loader.load(animalPaths[i], (gltf) => {
     const model = gltf.scene;
-    model.scale.set(3, 3, 3);
+    const scale = animalScales[i];
+    model.scale.set(scale, scale, scale); // 💡 크기 다르게 적용
+
+    // === 모델 바닥을 y=0에 맞추기 위한 보정 ===
+    const box = new THREE.Box3().setFromObject(model);
+    const yOffset = box.min.y * 3; // 스케일이 적용되므로 * 3
+    model.position.y = -yOffset;
 
     // wrapper 그룹 생성 (전체를 감싸는 바구니)
     const wrapper = new THREE.Group();
@@ -345,6 +453,35 @@ for (let i = 0; i < animalPaths.length; i++) {
     scene.add(wrapper);
     setNewTarget(i);
   });
+}
+// 아이템 획득 시 하늘에서 이모지 떨어지기
+function showFallingEmoji(emojiChar, x, z) {
+  const emoji = document.createElement('div');
+  emoji.innerText = emojiChar;
+  emoji.style.position = 'absolute';
+  emoji.style.fontSize = '40px';
+  emoji.style.pointerEvents = 'none';
+  emoji.style.zIndex = '1000';
+  emoji.style.transition = 'transform 1.5s ease-in, opacity 1.5s';
+  emoji.style.opacity = '1';
+  emoji.style.transform = 'translate(-50%, -50%)';
+  document.body.appendChild(emoji);
+
+  // 위치 계산
+  const start = new THREE.Vector3(x, 10, z);
+  const screen = start.project(camera);
+  const sx = (screen.x * 0.5 + 0.5) * window.innerWidth;
+  const sy = (-screen.y * 0.5 + 0.5) * window.innerHeight;
+
+  emoji.style.left = `${sx}px`;
+  emoji.style.top = `${sy}px`;
+
+  requestAnimationFrame(() => {
+    emoji.style.opacity = '0';
+    emoji.style.transform = `translate(-50%, 300px) scale(1.2)`;
+  });
+
+  setTimeout(() => emoji.remove(), 1600);
 }
 
 // === 플레이어 로딩 후 시작 ===
@@ -380,33 +517,60 @@ function animate() {
       flyingAnimals.splice(i, 1); // 리스트에서 제거
     } else {
       // 5초 동안 위로 이동하며 회전
-      flying.obj.position.y = flying.originalY + Math.sin(t * Math.PI) * 3;  // 위아래 곡선
+      flying.obj.position.y = flying.originalY + Math.abs(Math.sin(t * Math.PI)) * 3;  // 위아래 곡선
       flying.obj.rotation.y += 0.2;
       flying.obj.rotation.x = Math.sin(t * 10) * 0.1; // 살짝 흔들림 느낌
+    }
+  }
+ 
+  // 주인공 캐릭터 점프 중일 때
+  if (player.userData.jumping) {
+    const t = (Date.now() - player.userData.jumpStartTime) / 1000;
+    if (t > 5) {
+      player.userData.jumping = false;
+      player.position.y = 0;
+      player.rotation.y = 0;
+    } else {
+      player.position.y = Math.abs(Math.sin(t * Math.PI)) * 0.5;
+      player.rotation.y += 0.2;
     }
   }
 
 
   if (player) {
-    if (keys['w']) player.position.z -= speed;
-    if (keys['s']) player.position.z += speed;
-    if (keys['a']) player.position.x -= speed;
-    if (keys['d']) player.position.x += speed;
-
+    const dirX = (keys['d'] ? 1 : 0) - (keys['a'] ? 1 : 0);
+    const dirZ = (keys['s'] ? 1 : 0) - (keys['w'] ? 1 : 0);
+  
+    const moveX = new THREE.Vector3(dirX, 0, 0).normalize().multiplyScalar(speed);
+    const moveZ = new THREE.Vector3(0, 0, dirZ).normalize().multiplyScalar(speed);
+  
+    const posX = player.position.clone().add(moveX);
+    const posZ = player.position.clone().add(moveZ);
+  
+    // x축 이동 검사
+    if (dirX !== 0 && !checkCollisionWithAnimals(posX)) {
+      player.position.x += moveX.x;
+    }
+  
+    // z축 이동 검사
+    if (dirZ !== 0 && !checkCollisionWithAnimals(posZ)) {
+      player.position.z += moveZ.z;
+    }
+  
     // 이동 방향으로 회전
-    const dx = (keys['d'] ? 1 : 0) - (keys['a'] ? 1 : 0);
-    const dz = (keys['s'] ? 1 : 0) - (keys['w'] ? 1 : 0);
-    if (dx !== 0 || dz !== 0) {
-      const angle = Math.atan2(dx, dz);
+    if (dirX !== 0 || dirZ !== 0) {
+      const angle = Math.atan2(dirX, dirZ);
       player.rotation.y = angle;
     }
-
-    // 카메라가 주인공을 따라감
-    const offset = new THREE.Vector3(0, 8, 15); // 뒤에서 위쪽에서 따라가는 거리
+  
+    // 카메라 따라가기
+    const offset = new THREE.Vector3(0, 8, 15);
     const cameraTarget = player.position.clone().add(offset);
-    camera.position.lerp(cameraTarget, 0.1); // 부드럽게 따라가도록 보간
+    camera.position.lerp(cameraTarget, 0.1);
     camera.lookAt(player.position);
-  }  
+  }
+  
+  
 
   let nearAnimal = false;
   for (let i = 0; i < animals.length; i++) {
@@ -422,10 +586,13 @@ function animate() {
       if (keys['e'] && !inventory.includes(type)) {
         inventory.push(type);
         collected++;
-
+        
         const item = animalItems[type];
         showTip(item.name);  // 5초간 아이템 획득 메시지 출력
-      
+
+        const emojiChar = item.emoji;
+        showFallingEmoji(emojiChar, animal.position.x, animal.position.z);
+              
         // 이모티콘 추가
         const itemSpan = document.createElement('span');
         itemSpan.textContent = item.emoji;
@@ -436,8 +603,13 @@ function animate() {
         flyingAnimals.push({
           obj: animal,
           startTime: Date.now(),
-          originalY: animal.position.y
+          originalY: 0
         });
+
+        // 주인공 반응 애니메이션 추가
+        player.userData.jumpStartTime = Date.now();
+        player.userData.jumping = true;        
+
         if (collected === 3) {
           setTimeout(() => {
             showTip('아이템을 모두 모았습니다! 파티가 곧 시작됩니다 🎉', 5000);
@@ -464,29 +636,63 @@ function animate() {
       }, 5000);
     }, 0);
     animals.forEach((animal, idx) => {
-      animal.rotation.y += 0.01;
-      animal.position.y = Math.sin(Date.now() / 300 + idx) * 0.3;
-    });
-  } else {
-    // 자유 배회
-    animals.forEach((animal, idx) => {
-      const state = animalStates[idx];
-      const dist = animal.position.distanceTo(state.target);
+      const target = partyTargets[idx];
   
-      if (dist < 0.5) {
-        state.waitTime += 1;
-        if (state.waitTime > 100) {
-          setNewTarget(idx);
+      if (!dancingStates[idx]) {
+        const dist = animal.position.distanceTo(target);
+        if (dist > 0.1) {
+          const dir = new THREE.Vector3().subVectors(target, animal.position).normalize();
+          animal.position.addScaledVector(dir, 0.05); // 걷는 속도
+          animal.rotation.y = Math.atan2(dir.x, dir.z);
+        } else {
+          dancingStates[idx] = true;
         }
-      } else {
-        const dir = new THREE.Vector3().subVectors(state.target, animal.position).normalize();
-        animal.position.addScaledVector(dir, state.speed);
+      }
   
-        // 회전 방향 설정
-        const angle = Math.atan2(dir.x, dir.z);
-        animal.rotation.y = angle;
+      // 춤추기
+      if (dancingStates[idx]) {
+        const t = Date.now() / 300 + idx;
+        animal.position.y = Math.sin(t) * 0.5;
+        animal.rotation.y += Math.sin(t * 3 + idx) * 0.05;
       }
     });
+  
+    // 캐릭터도 춤
+    const t = Date.now() / 300;
+    player.position.y = Math.abs(Math.sin(t)) * 0.5;
+    player.rotation.y += 0.1;
+    
+  } else {
+  // 자유 배회
+  animals.forEach((animal, idx) => {
+    const state = animalStates[idx];
+    const dist = animal.position.distanceTo(state.target);
+
+    // 플레이어와 너무 가까우면 target 무시하고 도망 방향으로 이동
+    if (player) {
+      const distToPlayer = animal.position.distanceTo(player.position);
+      if (distToPlayer < 3.0) {
+        const awayDir = new THREE.Vector3().subVectors(animal.position, player.position).normalize();
+        animal.position.addScaledVector(awayDir, state.speed * 0.7); // 도망 이동
+        animal.rotation.y = Math.atan2(awayDir.x, awayDir.z);
+        return; // 아래 로직 생략하고 탈출
+      }
+    }
+
+    if (dist < 0.5) {
+      state.waitTime += 1;
+      if (state.waitTime > 100) {
+        setNewTarget(idx);
+      }
+    } else {
+      const dir = new THREE.Vector3().subVectors(state.target, animal.position).normalize();
+      animal.position.addScaledVector(dir, state.speed);
+
+      // 회전 방향 설정
+      const angle = Math.atan2(dir.x, dir.z);
+      animal.rotation.y = angle;
+    }
+  });
   }
   renderer.render(scene, camera);
 }
@@ -498,5 +704,178 @@ function startParty() {
 
   scene.background = nightTexture;
   light.color.set(0x111144);
+  light.intensity = 0.3;
+  ambientLight.intensity = 0.4;
+  animals.forEach((animal, idx) => {
+    const emoji = document.createElement('div');
+    emoji.innerText = '🥳';
+    emoji.style.position = 'absolute';
+    emoji.style.fontSize = '36px';
+    emoji.style.pointerEvents = 'none';
+    emoji.style.textShadow = '1px 1px 3px black';
+    document.body.appendChild(emoji);
+    animal.userData.emojiEl = emoji;
+  });
+  
+  const center = player.position.clone();
+  const radius = 4;
+  
+  animals.forEach((animal, idx) => {
+    const angle = (Math.PI * 2 * idx) / animals.length;
+    const x = center.x + Math.cos(angle) * radius;
+    const z = center.z + Math.sin(angle) * radius;
+    const target = new THREE.Vector3(x, 0, z);
+  
+    partyTargets[idx] = target;
+    dancingStates[idx] = false;
+  
+    // 방향 설정
+    const dir = new THREE.Vector3().subVectors(center, target);
+    animal.rotation.y = Math.atan2(dir.x, dir.z);
+  });
+  
+
+  // 하늘에 회전하는 조명 구슬
+  const discoBall = new THREE.PointLight(0xffffff, 1, 100);
+  discoBall.position.set(0, 8, 0);
+  scene.add(discoBall);
+
+  const discoGeometry = new THREE.SphereGeometry(0.5, 16, 16);
+  const discoMaterial = new THREE.MeshStandardMaterial({ color: 0x999999, metalness: 1, roughness: 0, emissive: 0x000000 });
+  const discoMesh = new THREE.Mesh(discoGeometry, discoMaterial);
+  discoBall.add(discoMesh);
+
+  const colors = [0xff00ff, 0x00ffff, 0xffff00, 0xffffff];
+  let colorIndex = 0;
+
+  // 무대 조명
+  const floorSpot = new THREE.SpotLight(0xffffff, 1.5);
+  floorSpot.position.set(0, 0.5, 0);         // 바닥 중앙 근처
+  floorSpot.target.position.set(0, 8, 0);    // 디스코볼 방향으로
+  floorSpot.angle = Math.PI / 6;
+  floorSpot.penumbra = 0.5;
+  floorSpot.decay = 2;
+  floorSpot.distance = 20;
+  scene.add(floorSpot);
+  scene.add(floorSpot.target);
+
+  const floorGlow = new THREE.PointLight(0xeeeeff, 1.0, 20);
+  floorGlow.position.set(0, 1.5, 0); // 약간만 위로 띄움
+  scene.add(floorGlow);
+  ground.material.metalness = 0.3;
+  ground.material.roughness = 0.6;
+  floorSpot.color.setHex(0xff66ff); // 핑크빛 무대 조명 느낌
+
+// === 파티 풍선 배치 ===
+loader.load('./models/balloon.glb', (gltf) => {
+  const balloon = gltf.scene;
+  balloon.traverse((child) => {
+    if (child.isMesh) {
+      child.castShadow = false;
+      child.receiveShadow = false;
+    }
+  });
+
+  const positions = [
+    [-8, 5, -8], [8, 5, -8],
+    [-8, 5, 8], [8, 5, 8],
+    [0, 5, -10], [0, 5, 10]
+  ];
+
+  positions.forEach((pos) => {
+    const clone = balloon.clone(true);
+    clone.position.set(...pos);
+    clone.scale.set(2.5, 2.5, 2.5); // 풍선 크기
+    scene.add(clone);
+  });
+});
+
+// === 가렌다 (삼각 장식 줄) 배치 ===
+loader.load('./models/garland.glb', (gltf) => {
+  const garland = gltf.scene;
+  garland.traverse((child) => {
+    if (child.isMesh) {
+      child.castShadow = false;
+      child.receiveShadow = false;
+    }
+  });
+
+  const garlandPositions = [
+    [-15, 6, 0],  // 왼쪽 벽면 느낌
+    [15, 6, 0],   // 오른쪽 벽면 느낌
+    [0, 6, -15],  // 앞
+    [0, 6, 15]    // 뒤
+  ];
+
+  garlandPositions.forEach((pos, i) => {
+    const clone = garland.clone(true);
+    clone.position.set(...pos);
+    clone.scale.set(3, 3, 3); // 크기 조정
+    if (i % 2 === 1) clone.rotation.y = Math.PI; // 방향 반전
+    scene.add(clone);
+  });
+});
+
+// 풍선 및 가렌다 조명 (파티 중앙 위)
+const decorLight = new THREE.PointLight(0xffccff, 1.2, 30);  // 부드러운 핑크빛 조명
+decorLight.position.set(0, 7.5, 0);
+scene.add(decorLight);
+
+
+  // 미러볼
+  loader.load('./models/partyBall.glb', (gltf) => {
+  const discoMesh = gltf.scene;
+
+  // 크기 조정 (필요에 따라 조정)
+  discoMesh.scale.set(2.5, 2.5, 2.5);
+  discoMesh.position.set(0, 8, 0);  // 공중에 매달린 느낌
+
+  // 그림자 및 반사 설정
+  discoMesh.traverse((child) => {
+    if (child.isMesh) {
+      child.castShadow = false;
+      child.receiveShadow = false;
+      child.material.emissive = new THREE.Color(0x222222);
+      child.material.metalness = 1;
+      child.material.roughness = 0.1;
+    }
+  });
+
+  scene.add(discoMesh);
+
+  // 회전 애니메이션
+  const rotateDisco = () => {
+    if (!partyStarted) return;
+    discoMesh.rotation.y += 0.02;
+    requestAnimationFrame(rotateDisco);
+  };
+  rotateDisco();
+});
+
+
+  // 1초마다 색 변경
+  setInterval(() => {
+    discoBall.color.setHex(colors[colorIndex]);
+    discoMaterial.color.setHex(colors[colorIndex]);
+    discoMaterial.emissive.setHex(colors[colorIndex]);
+    colorIndex = (colorIndex + 1) % colors.length;
+  }, 500);
+
+  // 회전 효과
+  const rotateBall = () => {
+    requestAnimationFrame(rotateBall);
+    discoMesh.rotation.y += 0.05;
+    discoBall.position.x = Math.sin(Date.now() * 0.001) * 5;
+    discoBall.position.z = Math.cos(Date.now() * 0.001) * 5;
+  };
+  rotateBall();
+
+  // 음악 효과 (선택사항, HTML <audio> 태그 필요)
+  const audio = new Audio('./sounds/party.mp3');
+  audio.loop = true;
+  audio.volume = 0.1;
+  audio.play();
+
+  showTip('🎊 파티 타임! 친구들과 즐기세요 🎊', 7000);
   message.innerText = '파티가 시작되었습니다!';
 }
