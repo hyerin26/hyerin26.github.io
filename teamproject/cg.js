@@ -456,33 +456,42 @@ for (let i = 0; i < animalPaths.length; i++) {
 }
 // 아이템 획득 시 하늘에서 이모지 떨어지기
 function showFallingEmoji(emojiChar, x, z) {
-  const emoji = document.createElement('div');
-  emoji.innerText = emojiChar;
-  emoji.style.position = 'absolute';
-  emoji.style.fontSize = '40px';
-  emoji.style.pointerEvents = 'none';
-  emoji.style.zIndex = '1000';
-  emoji.style.transition = 'transform 1.5s ease-in, opacity 1.5s';
-  emoji.style.opacity = '1';
-  emoji.style.transform = 'translate(-50%, -50%)';
-  document.body.appendChild(emoji);
+  for (let i = 0; i < 10; i++) {
+    const emoji = document.createElement('div');
+    emoji.innerText = emojiChar;
+    emoji.style.position = 'absolute';
+    emoji.style.fontSize = `${30 + Math.random() * 20}px`; // 다양한 크기
+    emoji.style.pointerEvents = 'none';
+    emoji.style.zIndex = '1000';
+    emoji.style.opacity = '1';
+    emoji.style.transition = 'transform 2s ease-in, opacity 2s';
+    emoji.style.transform = 'translate(-50%, -50%)';
+    document.body.appendChild(emoji);
 
-  // 위치 계산
-  const start = new THREE.Vector3(x, 10, z);
-  const screen = start.project(camera);
-  const sx = (screen.x * 0.5 + 0.5) * window.innerWidth;
-  const sy = (-screen.y * 0.5 + 0.5) * window.innerHeight;
+    // 약간의 랜덤 오프셋 위치
+    const start = new THREE.Vector3(
+      x + (Math.random() - 0.5) * 4,
+      10 + Math.random() * 2,
+      z + (Math.random() - 0.5) * 4
+    );
+    const screen = start.project(camera);
+    const sx = (screen.x * 0.5 + 0.5) * window.innerWidth;
+    const sy = (-screen.y * 0.5 + 0.5) * window.innerHeight;
 
-  emoji.style.left = `${sx}px`;
-  emoji.style.top = `${sy}px`;
+    emoji.style.left = `${sx}px`;
+    emoji.style.top = `${sy}px`;
 
-  requestAnimationFrame(() => {
-    emoji.style.opacity = '0';
-    emoji.style.transform = `translate(-50%, 300px) scale(1.2)`;
-  });
+    // 떨어뜨리는 애니메이션
+    requestAnimationFrame(() => {
+      emoji.style.opacity = '0';
+      emoji.style.transform = `translate(-50%, ${200 + Math.random() * 100}px) scale(1.2)`;
+    });
 
-  setTimeout(() => emoji.remove(), 1600);
+    // 제거
+    setTimeout(() => emoji.remove(), 2100);
+  }
 }
+
 
 // === 플레이어 로딩 후 시작 ===
 loader.load('./models/player.glb', (gltf) => {
@@ -830,14 +839,20 @@ scene.add(decorLight);
   discoMesh.scale.set(2.5, 2.5, 2.5);
   discoMesh.position.set(0, 8, 0);  // 공중에 매달린 느낌
 
+  const textureLoader = new THREE.TextureLoader();
+  const envMap = textureLoader.load('./textures/night.jpg'); // 또는 mirror.jpg 등
+  envMap.mapping = THREE.EquirectangularReflectionMapping;
+
   // 그림자 및 반사 설정
   discoMesh.traverse((child) => {
     if (child.isMesh) {
       child.castShadow = false;
       child.receiveShadow = false;
-      child.material.emissive = new THREE.Color(0x222222);
-      child.material.metalness = 1;
-      child.material.roughness = 0.1;
+      child.material.metalness = 1.0;
+      child.material.roughness = 0.05;
+      child.material.envMap = envMap;
+      child.material.envMapIntensity = 1.5;
+      child.material.needsUpdate = true;
     }
   });
 
